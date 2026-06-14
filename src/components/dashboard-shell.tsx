@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { Toaster } from "@/components/ui/sonner";
 
 const nav = [
   { to: "/dashboard", label: "Overview", icon: Home },
@@ -74,6 +75,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
           <div className="mx-auto max-w-6xl px-6 py-8">{children}</div>
         </main>
       </div>
+      <Toaster />
     </div>
   );
 }
