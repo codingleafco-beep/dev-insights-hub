@@ -1,0 +1,31 @@
+services:
+  ntfy:
+    image: binwiederhier/ntfy
+    container_name: lovehog-ntfy
+    command: serve
+    environment:
+      - TZ=UTC
+      - NTFY_BASE_URL=http://localhost:8081
+      - NTFY_BEHIND_PROXY=true
+      - NTFY_ATTACHMENT_CACHE_DIR=/var/cache/ntfy/attachments
+      - NTFY_CACHE_FILE=/var/cache/ntfy/cache.db
+      - NTFY_AUTH_FILE=/var/lib/ntfy/auth.db
+      - NTFY_AUTH_DEFAULT_ACCESS=read-write
+    volumes:
+      - ./data/ntfy-cache:/var/cache/ntfy
+      - ./data/ntfy-lib:/var/lib/ntfy
+    ports:
+      - "8081:80"
+    restart: unless-stopped
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: lovehog-searxng
+    ports:
+      - "8888:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888/
+      - INSTANCE_NAME=lovehog
+    restart: unless-stopped

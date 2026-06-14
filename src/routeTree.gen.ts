@@ -9,38 +9,168 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
+import { Route as DashboardSettingsRouteImport } from './routes/dashboard.settings'
+import { Route as DashboardSessionsRouteImport } from './routes/dashboard.sessions'
+import { Route as DashboardSearchRouteImport } from './routes/dashboard.search'
+import { Route as DashboardReplaysRouteImport } from './routes/dashboard.replays'
+import { Route as DashboardNotificationsRouteImport } from './routes/dashboard.notifications'
+import { Route as DashboardInstallRouteImport } from './routes/dashboard.install'
+import { Route as DashboardFlagsRouteImport } from './routes/dashboard.flags'
+import { Route as DashboardEventsRouteImport } from './routes/dashboard.events'
 
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DashboardIndexRoute = DashboardIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardSettingsRoute = DashboardSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardSessionsRoute = DashboardSessionsRouteImport.update({
+  id: '/sessions',
+  path: '/sessions',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardSearchRoute = DashboardSearchRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardReplaysRoute = DashboardReplaysRouteImport.update({
+  id: '/replays',
+  path: '/replays',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardNotificationsRoute = DashboardNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardInstallRoute = DashboardInstallRouteImport.update({
+  id: '/install',
+  path: '/install',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardFlagsRoute = DashboardFlagsRouteImport.update({
+  id: '/flags',
+  path: '/flags',
+  getParentRoute: () => DashboardRoute,
+} as any)
+const DashboardEventsRoute = DashboardEventsRouteImport.update({
+  id: '/events',
+  path: '/events',
+  getParentRoute: () => DashboardRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/dashboard': typeof DashboardRouteWithChildren
+  '/dashboard/events': typeof DashboardEventsRoute
+  '/dashboard/flags': typeof DashboardFlagsRoute
+  '/dashboard/install': typeof DashboardInstallRoute
+  '/dashboard/notifications': typeof DashboardNotificationsRoute
+  '/dashboard/replays': typeof DashboardReplaysRoute
+  '/dashboard/search': typeof DashboardSearchRoute
+  '/dashboard/sessions': typeof DashboardSessionsRoute
+  '/dashboard/settings': typeof DashboardSettingsRoute
+  '/dashboard/': typeof DashboardIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/dashboard/events': typeof DashboardEventsRoute
+  '/dashboard/flags': typeof DashboardFlagsRoute
+  '/dashboard/install': typeof DashboardInstallRoute
+  '/dashboard/notifications': typeof DashboardNotificationsRoute
+  '/dashboard/replays': typeof DashboardReplaysRoute
+  '/dashboard/search': typeof DashboardSearchRoute
+  '/dashboard/sessions': typeof DashboardSessionsRoute
+  '/dashboard/settings': typeof DashboardSettingsRoute
+  '/dashboard': typeof DashboardIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/dashboard': typeof DashboardRouteWithChildren
+  '/dashboard/events': typeof DashboardEventsRoute
+  '/dashboard/flags': typeof DashboardFlagsRoute
+  '/dashboard/install': typeof DashboardInstallRoute
+  '/dashboard/notifications': typeof DashboardNotificationsRoute
+  '/dashboard/replays': typeof DashboardReplaysRoute
+  '/dashboard/search': typeof DashboardSearchRoute
+  '/dashboard/sessions': typeof DashboardSessionsRoute
+  '/dashboard/settings': typeof DashboardSettingsRoute
+  '/dashboard/': typeof DashboardIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/dashboard'
+    | '/dashboard/events'
+    | '/dashboard/flags'
+    | '/dashboard/install'
+    | '/dashboard/notifications'
+    | '/dashboard/replays'
+    | '/dashboard/search'
+    | '/dashboard/sessions'
+    | '/dashboard/settings'
+    | '/dashboard/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/dashboard/events'
+    | '/dashboard/flags'
+    | '/dashboard/install'
+    | '/dashboard/notifications'
+    | '/dashboard/replays'
+    | '/dashboard/search'
+    | '/dashboard/sessions'
+    | '/dashboard/settings'
+    | '/dashboard'
+  id:
+    | '__root__'
+    | '/'
+    | '/dashboard'
+    | '/dashboard/events'
+    | '/dashboard/flags'
+    | '/dashboard/install'
+    | '/dashboard/notifications'
+    | '/dashboard/replays'
+    | '/dashboard/search'
+    | '/dashboard/sessions'
+    | '/dashboard/settings'
+    | '/dashboard/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DashboardRoute: typeof DashboardRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,22 +178,104 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dashboard/': {
+      id: '/dashboard/'
+      path: '/'
+      fullPath: '/dashboard/'
+      preLoaderRoute: typeof DashboardIndexRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/settings': {
+      id: '/dashboard/settings'
+      path: '/settings'
+      fullPath: '/dashboard/settings'
+      preLoaderRoute: typeof DashboardSettingsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/sessions': {
+      id: '/dashboard/sessions'
+      path: '/sessions'
+      fullPath: '/dashboard/sessions'
+      preLoaderRoute: typeof DashboardSessionsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/search': {
+      id: '/dashboard/search'
+      path: '/search'
+      fullPath: '/dashboard/search'
+      preLoaderRoute: typeof DashboardSearchRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/replays': {
+      id: '/dashboard/replays'
+      path: '/replays'
+      fullPath: '/dashboard/replays'
+      preLoaderRoute: typeof DashboardReplaysRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/notifications': {
+      id: '/dashboard/notifications'
+      path: '/notifications'
+      fullPath: '/dashboard/notifications'
+      preLoaderRoute: typeof DashboardNotificationsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/install': {
+      id: '/dashboard/install'
+      path: '/install'
+      fullPath: '/dashboard/install'
+      preLoaderRoute: typeof DashboardInstallRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/flags': {
+      id: '/dashboard/flags'
+      path: '/flags'
+      fullPath: '/dashboard/flags'
+      preLoaderRoute: typeof DashboardFlagsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
+    '/dashboard/events': {
+      id: '/dashboard/events'
+      path: '/events'
+      fullPath: '/dashboard/events'
+      preLoaderRoute: typeof DashboardEventsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
   }
 }
 
+interface DashboardRouteChildren {
+  DashboardEventsRoute: typeof DashboardEventsRoute
+  DashboardFlagsRoute: typeof DashboardFlagsRoute
+  DashboardInstallRoute: typeof DashboardInstallRoute
+  DashboardNotificationsRoute: typeof DashboardNotificationsRoute
+  DashboardReplaysRoute: typeof DashboardReplaysRoute
+  DashboardSearchRoute: typeof DashboardSearchRoute
+  DashboardSessionsRoute: typeof DashboardSessionsRoute
+  DashboardSettingsRoute: typeof DashboardSettingsRoute
+  DashboardIndexRoute: typeof DashboardIndexRoute
+}
+
+const DashboardRouteChildren: DashboardRouteChildren = {
+  DashboardEventsRoute: DashboardEventsRoute,
+  DashboardFlagsRoute: DashboardFlagsRoute,
+  DashboardInstallRoute: DashboardInstallRoute,
+  DashboardNotificationsRoute: DashboardNotificationsRoute,
+  DashboardReplaysRoute: DashboardReplaysRoute,
+  DashboardSearchRoute: DashboardSearchRoute,
+  DashboardSessionsRoute: DashboardSessionsRoute,
+  DashboardSettingsRoute: DashboardSettingsRoute,
+  DashboardIndexRoute: DashboardIndexRoute,
+}
+
+const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
+  DashboardRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DashboardRoute: DashboardRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

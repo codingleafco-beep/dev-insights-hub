@@ -1,0 +1,18 @@
+use_default_settings: true
+
+general:
+  instance_name: "LoveHog Search"
+
+server:
+  secret_key: "lovehog-dev-change-me"
+  limiter: false
+  image_proxy: true
+  bind_address: "0.0.0.0"
+
+search:
+  formats:
+    - html
+    - json
+
+ui:
+  static_use_hash: true
