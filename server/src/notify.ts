@@ -24,19 +24,24 @@ function matches(condition: string | null, props: Record<string, unknown>): bool
   }
 }
 
-export async function dispatchNotifications(event: {
-  event: string;
-  properties: Record<string, unknown>;
-  distinct_id?: string | null;
-  url?: string | null;
-}) {
+export async function dispatchNotifications(
+  projectId: string,
+  event: {
+    event: string;
+    properties: Record<string, unknown>;
+    distinct_id?: string | null;
+    url?: string | null;
+  },
+) {
   const base = getSetting("ntfy_url");
   if (!base) return;
   const defaultTopic = getSetting("ntfy_topic") ?? "lovehog";
 
   const rules = db
-    .prepare("SELECT * FROM notification_rules WHERE enabled = 1 AND event = ?")
-    .all(event.event) as Rule[];
+    .prepare(
+      "SELECT * FROM notification_rules WHERE enabled = 1 AND project_id = ? AND event = ?",
+    )
+    .all(projectId, event.event) as Rule[];
 
   await Promise.all(
     rules
