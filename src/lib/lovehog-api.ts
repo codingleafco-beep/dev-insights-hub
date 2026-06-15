@@ -5,11 +5,26 @@ const BASE =
   (import.meta.env.VITE_LOVEHOG_URL as string | undefined) ??
   "http://localhost:4318";
 
+const PROJECT_KEY = "lh.projectId";
+
+export function getActiveProjectId(): string | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage.getItem(PROJECT_KEY);
+}
+export function setActiveProjectId(id: string) {
+  localStorage.setItem(PROJECT_KEY, id);
+  window.dispatchEvent(new CustomEvent("lh:project-changed", { detail: id }));
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-    ...init,
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  const pid = getActiveProjectId();
+  if (pid && !headers["x-api-key"]) headers["x-project-id"] = pid;
+
+  const res = await fetch(`${BASE}${path}`, { ...init, headers });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
     throw new Error(`${res.status} ${text}`);
@@ -17,9 +32,28 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface Project {
+  id: string;
+  name: string;
+  api_key: string;
+  created_at: number;
+}
+
 export const api = {
   base: BASE,
   health: () => req<{ ok: boolean }>("/health"),
+
+  // Projects
+  projects: () => req<Project[]>("/projects"),
+  createProject: (name: string) =>
+    req<Project>("/projects", { method: "POST", body: JSON.stringify({ name }) }),
+  rotateKey: (id: string) =>
+    req<{ id: string; api_key: string }>(`/projects/${id}/rotate`, {
+      method: "POST",
+    }),
+  deleteProject: (id: string) =>
+    req<{ ok: boolean }>(`/projects/${id}`, { method: "DELETE" }),
+
   overview: () =>
     req<{
       total: number;
@@ -64,6 +98,10 @@ export const api = {
     }),
   search: (q: string) =>
     req<{ results: any[]; query: string }>(`/search?q=${encodeURIComponent(q)}`),
-  capture: (e: any) =>
-    req<{ ok: boolean }>("/capture", { method: "POST", body: JSON.stringify(e) }),
+  capture: (e: any, apiKey?: string) =>
+    req<{ ok: boolean }>("/capture", {
+      method: "POST",
+      body: JSON.stringify(e),
+      headers: apiKey ? { "x-api-key": apiKey } : {},
+    }),
 };

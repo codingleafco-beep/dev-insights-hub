@@ -1,28 +1,152 @@
-import express from "express";
+import express, { type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import { nanoid } from "nanoid";
-import { db, getSetting, setSetting } from "./db.js";
+import {
+  db,
+  getSetting,
+  setSetting,
+  ensureDefaultProject,
+  getProjectByApiKey,
+  getProjectById,
+} from "./db.js";
 import { dispatchNotifications } from "./notify.js";
 
 const app = express();
-app.use(cors());
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+    exposedHeaders: ["x-project-id"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "x-api-key",
+      "x-project-id",
+    ],
+  }),
+);
 app.use(express.json({ limit: "10mb" }));
 
 const PORT = Number(process.env.PORT ?? 4318);
 
+// Boot: ensure there is always at least one project.
+const defaultProject = ensureDefaultProject();
+console.log(
+  `🦔 default project "${defaultProject.name}" (${defaultProject.id}) key=${defaultProject.api_key}`,
+);
+
+/* ───────── Project resolution middleware ─────────
+   - SDK requests authenticate with `x-api-key` (or ?api_key, or body.api_key).
+   - Dashboard requests pass `x-project-id` (or ?project_id) — no auth required,
+     this is a local devtool.
+*/
+function pickKey(req: Request): string | undefined {
+  return (
+    (req.header("x-api-key") as string | undefined) ||
+    (req.query.api_key as string | undefined) ||
+    (req.body && typeof req.body === "object" ? req.body.api_key : undefined)
+  );
+}
+function pickProjectId(req: Request): string | undefined {
+  return (
+    (req.header("x-project-id") as string | undefined) ||
+    (req.query.project_id as string | undefined)
+  );
+}
+
+function requireApiKey(req: Request, res: Response, next: NextFunction) {
+  const key = pickKey(req);
+  if (!key) return res.status(401).json({ error: "x-api-key required" });
+  const project = getProjectByApiKey(key);
+  if (!project) return res.status(401).json({ error: "invalid api key" });
+  (req as any).project = project;
+  next();
+}
+
+function requireProject(req: Request, res: Response, next: NextFunction) {
+  // Try api_key first (allows SDK to read flags etc), then dashboard project_id.
+  const key = pickKey(req);
+  if (key) {
+    const p = getProjectByApiKey(key);
+    if (!p) return res.status(401).json({ error: "invalid api key" });
+    (req as any).project = p;
+    return next();
+  }
+  const pid = pickProjectId(req);
+  if (!pid) {
+    // Fall back to default project so the dashboard works out of the box.
+    (req as any).project = defaultProject;
+    return next();
+  }
+  const p = getProjectById(pid);
+  if (!p) return res.status(404).json({ error: "unknown project" });
+  (req as any).project = p;
+  next();
+}
+
+const projectId = (req: Request) => (req as any).project.id as string;
+
 app.get("/health", (_req, res) => res.json({ ok: true, service: "lovehog" }));
 
+/* ───────── Projects CRUD ───────── */
+app.get("/projects", (_req, res) => {
+  res.json(db.prepare("SELECT * FROM projects ORDER BY created_at ASC").all());
+});
+
+app.post("/projects", (req, res) => {
+  const name = String(req.body?.name ?? "").trim();
+  if (!name) return res.status(400).json({ error: "name required" });
+  const id = nanoid(12);
+  const api_key = `lh_${nanoid(28)}`;
+  db.prepare(
+    "INSERT INTO projects(id, name, api_key, created_at) VALUES(?,?,?,?)",
+  ).run(id, name, api_key, Date.now());
+  res.json({ id, name, api_key });
+});
+
+app.post("/projects/:id/rotate", (req, res) => {
+  const api_key = `lh_${nanoid(28)}`;
+  const r = db
+    .prepare("UPDATE projects SET api_key = ? WHERE id = ?")
+    .run(api_key, req.params.id);
+  if (!r.changes) return res.status(404).json({ error: "not found" });
+  res.json({ id: req.params.id, api_key });
+});
+
+app.delete("/projects/:id", (req, res) => {
+  const remaining = (db.prepare("SELECT COUNT(*) c FROM projects").get() as any)
+    .c;
+  if (remaining <= 1)
+    return res.status(400).json({ error: "cannot delete last project" });
+  const id = req.params.id;
+  const tx = db.transaction(() => {
+    for (const t of [
+      "events",
+      "sessions",
+      "recordings",
+      "notification_rules",
+      "flags",
+    ]) {
+      db.prepare(`DELETE FROM ${t} WHERE project_id = ?`).run(id);
+    }
+    db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+  });
+  tx();
+  res.json({ ok: true });
+});
+
 /* ───────── Capture ───────── */
-app.post("/capture", async (req, res) => {
+app.post("/capture", requireApiKey, async (req, res) => {
+  const pid = projectId(req);
   const body = req.body ?? {};
   const events = Array.isArray(body.batch) ? body.batch : [body];
   const stmt = db.prepare(
-    `INSERT INTO events(id, ts, event, distinct_id, session_id, url, referrer, user_agent, properties)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events(id, project_id, ts, event, distinct_id, session_id, url, referrer, user_agent, properties)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const upsertSession = db.prepare(
-    `INSERT INTO sessions(id, distinct_id, started_at, last_seen_at, pageviews, events, user_agent, entry_url)
-     VALUES(?, ?, ?, ?, ?, 1, ?, ?)
+    `INSERT INTO sessions(id, project_id, distinct_id, started_at, last_seen_at, pageviews, events, user_agent, entry_url)
+     VALUES(?, ?, ?, ?, ?, ?, 1, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        last_seen_at = excluded.last_seen_at,
        events = sessions.events + 1,
@@ -41,6 +165,7 @@ app.post("/capture", async (req, res) => {
       const url = e.url ?? e.properties?.$current_url ?? null;
       stmt.run(
         id,
+        pid,
         ts,
         ev,
         e.distinct_id ?? null,
@@ -53,6 +178,7 @@ app.post("/capture", async (req, res) => {
       if (sid) {
         upsertSession.run(
           sid,
+          pid,
           e.distinct_id ?? null,
           ts,
           ts,
@@ -66,9 +192,8 @@ app.post("/capture", async (req, res) => {
   });
   tx(events);
 
-  // Fire-and-forget notifications
   inserted.forEach((e) =>
-    dispatchNotifications({
+    dispatchNotifications(pid, {
       event: e.event,
       properties: e.properties ?? {},
       distinct_id: e.distinct_id,
@@ -80,77 +205,111 @@ app.post("/capture", async (req, res) => {
 });
 
 /* ───────── Events / Stats ───────── */
-app.get("/events", (req, res) => {
+app.get("/events", requireProject, (req, res) => {
+  const pid = projectId(req);
   const limit = Math.min(Number(req.query.limit ?? 100), 500);
   const event = req.query.event as string | undefined;
   const rows = event
     ? db
-        .prepare("SELECT * FROM events WHERE event = ? ORDER BY ts DESC LIMIT ?")
-        .all(event, limit)
-    : db.prepare("SELECT * FROM events ORDER BY ts DESC LIMIT ?").all(limit);
+        .prepare(
+          "SELECT * FROM events WHERE project_id = ? AND event = ? ORDER BY ts DESC LIMIT ?",
+        )
+        .all(pid, event, limit)
+    : db
+        .prepare(
+          "SELECT * FROM events WHERE project_id = ? ORDER BY ts DESC LIMIT ?",
+        )
+        .all(pid, limit);
   res.json(rows);
 });
 
-app.get("/stats/overview", (_req, res) => {
+app.get("/stats/overview", requireProject, (req, res) => {
+  const pid = projectId(req);
   const now = Date.now();
   const day = 24 * 60 * 60 * 1000;
-  const total = (db.prepare("SELECT COUNT(*) c FROM events").get() as any).c;
+  const total = (
+    db.prepare("SELECT COUNT(*) c FROM events WHERE project_id = ?").get(pid) as any
+  ).c;
   const last24 = (
-    db.prepare("SELECT COUNT(*) c FROM events WHERE ts > ?").get(now - day) as any
+    db
+      .prepare("SELECT COUNT(*) c FROM events WHERE project_id = ? AND ts > ?")
+      .get(pid, now - day) as any
   ).c;
   const uniqueUsers = (
-    db.prepare("SELECT COUNT(DISTINCT distinct_id) c FROM events WHERE distinct_id IS NOT NULL").get() as any
+    db
+      .prepare(
+        "SELECT COUNT(DISTINCT distinct_id) c FROM events WHERE project_id = ? AND distinct_id IS NOT NULL",
+      )
+      .get(pid) as any
   ).c;
-  const sessions = (db.prepare("SELECT COUNT(*) c FROM sessions").get() as any).c;
+  const sessions = (
+    db.prepare("SELECT COUNT(*) c FROM sessions WHERE project_id = ?").get(pid) as any
+  ).c;
   const topEvents = db
-    .prepare("SELECT event, COUNT(*) c FROM events GROUP BY event ORDER BY c DESC LIMIT 10")
-    .all();
-
-  // hourly buckets last 24h
+    .prepare(
+      "SELECT event, COUNT(*) c FROM events WHERE project_id = ? GROUP BY event ORDER BY c DESC LIMIT 10",
+    )
+    .all(pid);
   const series = db
     .prepare(
       `SELECT (ts / 3600000) * 3600000 AS bucket, COUNT(*) c
-       FROM events WHERE ts > ? GROUP BY bucket ORDER BY bucket ASC`,
+       FROM events WHERE project_id = ? AND ts > ? GROUP BY bucket ORDER BY bucket ASC`,
     )
-    .all(now - day);
+    .all(pid, now - day);
 
   res.json({ total, last24, uniqueUsers, sessions, topEvents, series });
 });
 
 /* ───────── Sessions ───────── */
-app.get("/sessions", (req, res) => {
+app.get("/sessions", requireProject, (req, res) => {
+  const pid = projectId(req);
   const limit = Math.min(Number(req.query.limit ?? 100), 500);
   const rows = db
-    .prepare("SELECT * FROM sessions ORDER BY last_seen_at DESC LIMIT ?")
-    .all(limit);
+    .prepare(
+      "SELECT * FROM sessions WHERE project_id = ? ORDER BY last_seen_at DESC LIMIT ?",
+    )
+    .all(pid, limit);
   res.json(rows);
 });
 
-app.get("/sessions/:id", (req, res) => {
-  const session = db.prepare("SELECT * FROM sessions WHERE id = ?").get(req.params.id);
+app.get("/sessions/:id", requireProject, (req, res) => {
+  const pid = projectId(req);
+  const session = db
+    .prepare("SELECT * FROM sessions WHERE id = ? AND project_id = ?")
+    .get(req.params.id, pid);
   const events = db
-    .prepare("SELECT * FROM events WHERE session_id = ? ORDER BY ts ASC")
-    .all(req.params.id);
+    .prepare(
+      "SELECT * FROM events WHERE session_id = ? AND project_id = ? ORDER BY ts ASC",
+    )
+    .all(req.params.id, pid);
   res.json({ session, events });
 });
 
 /* ───────── Feature Flags ───────── */
-app.get("/flags", (_req, res) => {
-  res.json(db.prepare("SELECT * FROM flags ORDER BY updated_at DESC").all());
+app.get("/flags", requireProject, (req, res) => {
+  const pid = projectId(req);
+  res.json(
+    db
+      .prepare("SELECT * FROM flags WHERE project_id = ? ORDER BY updated_at DESC")
+      .all(pid),
+  );
 });
 
-app.post("/flags", (req, res) => {
-  const { key, name, description, enabled = true, rollout = 100, variants } = req.body ?? {};
+app.post("/flags", requireProject, (req, res) => {
+  const pid = projectId(req);
+  const { key, name, description, enabled = true, rollout = 100, variants } =
+    req.body ?? {};
   if (!key) return res.status(400).json({ error: "key required" });
   const now = Date.now();
   db.prepare(
-    `INSERT INTO flags(key, name, description, enabled, rollout, variants, created_at, updated_at)
-     VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(key) DO UPDATE SET
+    `INSERT INTO flags(project_id, key, name, description, enabled, rollout, variants, created_at, updated_at)
+     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(project_id, key) DO UPDATE SET
        name=excluded.name, description=excluded.description,
        enabled=excluded.enabled, rollout=excluded.rollout,
        variants=excluded.variants, updated_at=excluded.updated_at`,
   ).run(
+    pid,
     key,
     name ?? key,
     description ?? "",
@@ -163,15 +322,22 @@ app.post("/flags", (req, res) => {
   res.json({ ok: true });
 });
 
-app.delete("/flags/:key", (req, res) => {
-  db.prepare("DELETE FROM flags WHERE key = ?").run(req.params.key);
+app.delete("/flags/:key", requireProject, (req, res) => {
+  const pid = projectId(req);
+  db.prepare("DELETE FROM flags WHERE project_id = ? AND key = ?").run(
+    pid,
+    req.params.key,
+  );
   res.json({ ok: true });
 });
 
-// Evaluate flags for a distinct_id (simple consistent hashing)
-app.get("/flags/evaluate", (req, res) => {
+// SDK uses x-api-key here; dashboard preview can use x-project-id.
+app.get("/flags/evaluate", requireProject, (req, res) => {
+  const pid = projectId(req);
   const distinctId = String(req.query.distinct_id ?? "anon");
-  const flags = db.prepare("SELECT * FROM flags WHERE enabled = 1").all() as any[];
+  const flags = db
+    .prepare("SELECT * FROM flags WHERE project_id = ? AND enabled = 1")
+    .all(pid) as any[];
   const result: Record<string, boolean | string> = {};
   for (const f of flags) {
     const hash = Array.from(distinctId + f.key).reduce(
@@ -204,7 +370,8 @@ app.get("/flags/evaluate", (req, res) => {
 });
 
 /* ───────── Session Replay ───────── */
-app.post("/replay/:sessionId", (req, res) => {
+app.post("/replay/:sessionId", requireApiKey, (req, res) => {
+  const pid = projectId(req);
   const { sessionId } = req.params;
   const { events, distinct_id } = req.body ?? {};
   if (!Array.isArray(events) || !events.length)
@@ -212,13 +379,13 @@ app.post("/replay/:sessionId", (req, res) => {
 
   const now = Date.now();
   let rec = db
-    .prepare("SELECT * FROM recordings WHERE session_id = ?")
-    .get(sessionId) as any;
+    .prepare("SELECT * FROM recordings WHERE session_id = ? AND project_id = ?")
+    .get(sessionId, pid) as any;
   if (!rec) {
     const id = nanoid();
     db.prepare(
-      "INSERT INTO recordings(id, session_id, distinct_id, ts, duration, chunks) VALUES(?,?,?,?,0,0)",
-    ).run(id, sessionId, distinct_id ?? null, now);
+      "INSERT INTO recordings(id, project_id, session_id, distinct_id, ts, duration, chunks) VALUES(?,?,?,?,?,0,0)",
+    ).run(id, pid, sessionId, distinct_id ?? null, now);
     rec = { id, ts: now };
   }
   const insert = db.prepare(
@@ -234,21 +401,31 @@ app.post("/replay/:sessionId", (req, res) => {
   res.json({ ok: true, recording_id: rec.id });
 });
 
-app.get("/replay", (_req, res) => {
+app.get("/replay", requireProject, (req, res) => {
+  const pid = projectId(req);
   res.json(
-    db.prepare("SELECT * FROM recordings ORDER BY ts DESC LIMIT 100").all(),
+    db
+      .prepare(
+        "SELECT * FROM recordings WHERE project_id = ? ORDER BY ts DESC LIMIT 100",
+      )
+      .all(pid),
   );
 });
 
-app.get("/replay/:id", (req, res) => {
-  const rec = db.prepare("SELECT * FROM recordings WHERE id = ?").get(req.params.id);
+app.get("/replay/:id", requireProject, (req, res) => {
+  const pid = projectId(req);
+  const rec = db
+    .prepare("SELECT * FROM recordings WHERE id = ? AND project_id = ?")
+    .get(req.params.id, pid);
   const chunks = db
-    .prepare("SELECT payload FROM recording_chunks WHERE recording_id = ? ORDER BY ts ASC")
+    .prepare(
+      "SELECT payload FROM recording_chunks WHERE recording_id = ? ORDER BY ts ASC",
+    )
     .all(req.params.id) as { payload: string }[];
   res.json({ recording: rec, events: chunks.map((c) => JSON.parse(c.payload)) });
 });
 
-/* ───────── Settings (ntfy + searxng URLs) ───────── */
+/* ───────── Settings (global ntfy + searxng URLs) ───────── */
 app.get("/settings", (_req, res) => {
   res.json({
     ntfy_url: getSetting("ntfy_url") ?? "",
@@ -264,19 +441,39 @@ app.post("/settings", (req, res) => {
   res.json({ ok: true });
 });
 
-/* ───────── Notification rules ───────── */
-app.get("/notifications/rules", (_req, res) => {
-  res.json(db.prepare("SELECT * FROM notification_rules ORDER BY created_at DESC").all());
+/* ───────── Notification rules (per-project) ───────── */
+app.get("/notifications/rules", requireProject, (req, res) => {
+  const pid = projectId(req);
+  res.json(
+    db
+      .prepare(
+        "SELECT * FROM notification_rules WHERE project_id = ? ORDER BY created_at DESC",
+      )
+      .all(pid),
+  );
 });
 
-app.post("/notifications/rules", (req, res) => {
-  const { name, event, condition, topic, priority = 3, enabled = true } = req.body ?? {};
-  if (!name || !event) return res.status(400).json({ error: "name and event required" });
+app.post("/notifications/rules", requireProject, (req, res) => {
+  const pid = projectId(req);
+  const { name, event, condition, topic, priority = 3, enabled = true } =
+    req.body ?? {};
+  if (!name || !event)
+    return res.status(400).json({ error: "name and event required" });
   const id = nanoid();
   db.prepare(
-    `INSERT INTO notification_rules(id, name, event, condition, topic, priority, enabled, created_at)
-     VALUES(?,?,?,?,?,?,?,?)`,
-  ).run(id, name, event, condition ?? null, topic ?? null, priority, enabled ? 1 : 0, Date.now());
+    `INSERT INTO notification_rules(id, project_id, name, event, condition, topic, priority, enabled, created_at)
+     VALUES(?,?,?,?,?,?,?,?,?)`,
+  ).run(
+    id,
+    pid,
+    name,
+    event,
+    condition ?? null,
+    topic ?? null,
+    priority,
+    enabled ? 1 : 0,
+    Date.now(),
+  );
   res.json({ ok: true, id });
 });
 

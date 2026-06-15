@@ -16,6 +16,7 @@ import { Route as DashboardSettingsRouteImport } from './routes/dashboard.settin
 import { Route as DashboardSessionsRouteImport } from './routes/dashboard.sessions'
 import { Route as DashboardSearchRouteImport } from './routes/dashboard.search'
 import { Route as DashboardReplaysRouteImport } from './routes/dashboard.replays'
+import { Route as DashboardProjectsRouteImport } from './routes/dashboard.projects'
 import { Route as DashboardNotificationsRouteImport } from './routes/dashboard.notifications'
 import { Route as DashboardInstallRouteImport } from './routes/dashboard.install'
 import { Route as DashboardFlagsRouteImport } from './routes/dashboard.flags'
@@ -56,6 +57,11 @@ const DashboardReplaysRoute = DashboardReplaysRouteImport.update({
   path: '/replays',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardProjectsRoute = DashboardProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardNotificationsRoute = DashboardNotificationsRouteImport.update({
   id: '/notifications',
   path: '/notifications',
@@ -84,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/flags': typeof DashboardFlagsRoute
   '/dashboard/install': typeof DashboardInstallRoute
   '/dashboard/notifications': typeof DashboardNotificationsRoute
+  '/dashboard/projects': typeof DashboardProjectsRoute
   '/dashboard/replays': typeof DashboardReplaysRoute
   '/dashboard/search': typeof DashboardSearchRoute
   '/dashboard/sessions': typeof DashboardSessionsRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByTo {
   '/dashboard/flags': typeof DashboardFlagsRoute
   '/dashboard/install': typeof DashboardInstallRoute
   '/dashboard/notifications': typeof DashboardNotificationsRoute
+  '/dashboard/projects': typeof DashboardProjectsRoute
   '/dashboard/replays': typeof DashboardReplaysRoute
   '/dashboard/search': typeof DashboardSearchRoute
   '/dashboard/sessions': typeof DashboardSessionsRoute
@@ -110,6 +118,7 @@ export interface FileRoutesById {
   '/dashboard/flags': typeof DashboardFlagsRoute
   '/dashboard/install': typeof DashboardInstallRoute
   '/dashboard/notifications': typeof DashboardNotificationsRoute
+  '/dashboard/projects': typeof DashboardProjectsRoute
   '/dashboard/replays': typeof DashboardReplaysRoute
   '/dashboard/search': typeof DashboardSearchRoute
   '/dashboard/sessions': typeof DashboardSessionsRoute
@@ -125,6 +134,7 @@ export interface FileRouteTypes {
     | '/dashboard/flags'
     | '/dashboard/install'
     | '/dashboard/notifications'
+    | '/dashboard/projects'
     | '/dashboard/replays'
     | '/dashboard/search'
     | '/dashboard/sessions'
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
     | '/dashboard/flags'
     | '/dashboard/install'
     | '/dashboard/notifications'
+    | '/dashboard/projects'
     | '/dashboard/replays'
     | '/dashboard/search'
     | '/dashboard/sessions'
@@ -150,6 +161,7 @@ export interface FileRouteTypes {
     | '/dashboard/flags'
     | '/dashboard/install'
     | '/dashboard/notifications'
+    | '/dashboard/projects'
     | '/dashboard/replays'
     | '/dashboard/search'
     | '/dashboard/sessions'
@@ -213,6 +225,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardReplaysRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/projects': {
+      id: '/dashboard/projects'
+      path: '/projects'
+      fullPath: '/dashboard/projects'
+      preLoaderRoute: typeof DashboardProjectsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/notifications': {
       id: '/dashboard/notifications'
       path: '/notifications'
@@ -249,6 +268,7 @@ interface DashboardRouteChildren {
   DashboardFlagsRoute: typeof DashboardFlagsRoute
   DashboardInstallRoute: typeof DashboardInstallRoute
   DashboardNotificationsRoute: typeof DashboardNotificationsRoute
+  DashboardProjectsRoute: typeof DashboardProjectsRoute
   DashboardReplaysRoute: typeof DashboardReplaysRoute
   DashboardSearchRoute: typeof DashboardSearchRoute
   DashboardSessionsRoute: typeof DashboardSessionsRoute
@@ -261,6 +281,7 @@ const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardFlagsRoute: DashboardFlagsRoute,
   DashboardInstallRoute: DashboardInstallRoute,
   DashboardNotificationsRoute: DashboardNotificationsRoute,
+  DashboardProjectsRoute: DashboardProjectsRoute,
   DashboardReplaysRoute: DashboardReplaysRoute,
   DashboardSearchRoute: DashboardSearchRoute,
   DashboardSessionsRoute: DashboardSessionsRoute,
